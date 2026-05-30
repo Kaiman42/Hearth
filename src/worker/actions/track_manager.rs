@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use nonmax::NonMaxU32;
 
 use songbird::tracks::TrackHandle;
 
@@ -25,7 +26,11 @@ pub async fn seek_to_position(track: &Option<TrackHandle>, position: Option<u64>
 
 pub async fn loop_x_times(track: &Option<TrackHandle>, times: Option<usize>) -> Result<()> {
     let t = track.as_ref().context("Track not found")?;
-    t.loop_for(times.context("Failed to get Loop Times")?)?;
+    let loop_times = times.context("Failed to get Loop Times")?;
+    let loop_times_u32 = u32::try_from(loop_times).context("Loop Times exceeds supported range")?;
+    let loop_times =
+        NonMaxU32::new(loop_times_u32).context("Loop Times must be greater than zero")?;
+    t.loop_for(loop_times)?;
     Ok(())
 }
 

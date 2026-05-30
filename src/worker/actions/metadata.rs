@@ -3,10 +3,10 @@ use crate::worker::connector::{send_message, WORKER_PRODUCER};
 use anyhow::{Context, Result};
 use hearth_interconnect::errors::ErrorReport;
 use hearth_interconnect::messages::{Message, Metadata};
-use songbird::tracks::{Action, TrackHandle, View};
+use songbird::tracks::TrackHandle;
 use std::sync::OnceLock;
 use std::thread;
-use symphonia_core::codecs::CodecParameters;
+
 use tokio::sync::Mutex;
 
 // This is a bit of a hack to pass data into the get metadata action
@@ -45,29 +45,10 @@ macro_rules! report_metadata_error {
     };
 }
 
-fn get_duration(codec: &CodecParameters) -> Result<Option<u64>> {
-    let time_base = codec.time_base.context("Failed to get timebase")?;
-    Ok(Some(
-        time_base
-            .calc_time(codec.n_frames.context("Failed to get N frames")?)
-            .seconds,
-    ))
-}
 
-async fn get_duration_wrapper(codec: &CodecParameters) -> Option<u64> {
-    let duration = get_duration(codec);
-    match duration {
-        Ok(d) => d,
-        Err(e) => {
-            report_metadata_error!(e);
-            None
-        }
-    }
-}
 
-async fn get_codec_metadata(codec: Option<CodecParameters>, position: u64) -> Result<Metadata> {
-    let codec = codec.as_ref().context("Failed to get codec")?;
 
+async fn get_codec_metadata(duration: Option<u64>, sample_rate: Option<u32>, position: u64) -> Result<Metadata> {
     let mut jx = JOB_ID.get().unwrap().lock().await;
     let j = jx.as_mut();
 
@@ -83,16 +64,16 @@ async fn get_codec_metadata(codec: Option<CodecParameters>, position: u64) -> Re
         .context("Failed to get JOB ID. While getting Metadata")?;
 
     Ok(Metadata {
-        duration: get_duration_wrapper(codec).await,
+        duration,
         position: Some(position),
-        sample_rate: Some(codec.sample_rate.context("Failed to get Sample Rate")?),
+        sample_rate,
         job_id: job_id.to_string(),
         guild_id: guild_id.to_string(),
     })
 }
 
-async fn get_metadata_sub(codec: Option<CodecParameters>, position: u64) {
-    let r = get_codec_metadata(codec, position).await;
+async fn get_metadata_sub(duration: Option<u64>, sample_rate: Option<u32>, position: u64) {
+    let r = get_codec_metadata(duration, sample_rate, position).await;
     match r {
         Ok(a) => {
             let mut px = WORKER_PRODUCER.get().unwrap().lock().await;
@@ -117,15 +98,6 @@ async fn get_metadata_sub(codec: Option<CodecParameters>, position: u64) {
     }
 }
 
-fn get_metadata_action(view: View) -> Option<Action> {
-    let codec = view.codec;
-    let position = view.position.as_secs();
-    thread::spawn(move || {
-        futures::executor::block_on(get_metadata_sub(codec, position));
-    });
-    None
-}
-
 pub async fn get_metadata(
     track: &Option<TrackHandle>,
     config: &Config,
@@ -140,6 +112,16 @@ pub async fn get_metadata(
     let _ = REQUEST_ID.set(Mutex::new(Some(request_id)));
     let _ = GUILD_ID.set(Mutex::new(Some(guild_id)));
 
-    t.action(get_metadata_action).unwrap();
+    let duration = None;
+    let sample_rate = None;
+
+    let _ = t.action(move |view| {
+        let position = view.position.as_secs();
+        thread::spawn(move || {
+            futures::executor::block_on(get_metadata_sub(duration, sample_rate, position));
+        });
+        None
+    });
+    
     Ok(())
 }

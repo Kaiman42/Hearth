@@ -16,6 +16,7 @@ use hearth_interconnect::errors::ErrorReport;
 use hearth_interconnect::messages::{ExternalQueueJobResponse, JobExpired, Message};
 use hearth_interconnect::worker_communication::{DWCActionType, DirectWorkerCommunication, Job};
 use log::info;
+use reqwest::header::{ACCEPT, HeaderMap, HeaderValue};
 use reqwest::Client as HttpClient;
 use songbird::tracks::TrackHandle;
 use songbird::Songbird;
@@ -86,7 +87,13 @@ pub async fn process_job(
     let job_id = JobID::Specific(job.job_id.clone());
     let global_job_id = JobID::Global();
     let guild_id = job.guild_id.clone();
-    let client = HttpClient::new();
+    let mut default_headers = HeaderMap::new();
+    default_headers.insert(ACCEPT, HeaderValue::from_static("*/*"));
+    let client = HttpClient::builder()
+        .user_agent("KoreBot/1.0 (https://github.com/Kaiman42/kore-system)")
+        .default_headers(default_headers)
+        .build()
+        .expect("Failed to build HTTP client for audio playback");
 
     //
     let mut track: Option<TrackHandle> = None;
@@ -114,7 +121,8 @@ pub async fn process_job(
 
     // Start core
     info!("Worker started");
-    while let Ok(msg) = sender.subscribe().recv().await {
+    let mut receiver = sender.subscribe();
+    while let Ok(msg) = receiver.recv().await {
         if job_id == msg.job_id || msg.job_id == global_job_id {
             let dwc: Option<DirectWorkerCommunication> = msg.dwc;
             match msg.action_type {
@@ -235,6 +243,11 @@ pub async fn process_job(
                 }
                 ProcessorIncomingAction::Actions(DWCActionType::PlayDirectLink) => {
                     let dwc = dwc.expect("This should never happen. Because this is a DWC type and is parsed previously.");
+                    info!(
+                        "Processing PlayDirectLink for job {} with url {:?}",
+                        dwc.job_id,
+                        dwc.play_audio_url
+                    );
                     // Make sure we are not already playing something on this handler
                     if !is_playing {
                         track = error_report!(

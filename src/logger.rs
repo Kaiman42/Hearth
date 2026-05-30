@@ -1,4 +1,5 @@
 use std::time::SystemTime;
+use std::{env, io};
 
 use fern::colors::{Color, ColoredLevelConfig};
 use log::{info, Level};
@@ -31,7 +32,12 @@ pub fn setup_logger(config: &Config) -> Result<(), fern::InitError> {
         _ => log::LevelFilter::Info
     };
 
-    fern::Dispatch::new()
+    let persist_logs_to_file = match env::var("HEARTH_LOG_TO_FILE") {
+        Ok(value) => value.eq_ignore_ascii_case("true"),
+        Err(_) => env::var("NODE_ENV").map(|value| value != "development").unwrap_or(true),
+    };
+
+    let dispatch = fern::Dispatch::new()
         .format(move |out, message, record| {
             // Handles Sentry logging
             if config_f.config.sentry_url.is_some() {
@@ -58,9 +64,16 @@ pub fn setup_logger(config: &Config) -> Result<(), fern::InitError> {
         .level(log_level)
         .level_for("serenity", log::LevelFilter::Warn)
         .level_for("tracing", log::LevelFilter::Warn)
-        .chain(std::io::stdout())
-        .chain(fern::log_file("output.log")?)
-        .apply()?;
+        .level_for("songbird", log::LevelFilter::Warn)
+        .chain(io::stdout());
+
+    let dispatch = if persist_logs_to_file {
+        dispatch.chain(fern::log_file("output.log")?)
+    } else {
+        dispatch
+    };
+
+    dispatch.apply()?;
     info!("------------------------------------------ NEW INSTANCE STARTED ------------------------------------------");
     Ok(())
 }

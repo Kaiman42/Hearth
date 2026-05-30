@@ -73,6 +73,12 @@ async fn parse_message_callback(
     match message {
         Message::DirectWorkerCommunication(dwc) => {
             if &dwc.worker_id == config.config.worker_id.as_ref().unwrap() {
+                info!(
+                    "Received DWC action {:?} for job {} on worker {}",
+                    dwc.action_type,
+                    dwc.job_id,
+                    dwc.worker_id
+                );
                 let job_id = dwc.job_id.clone();
 
                 let channel = JOB_CHANNELS

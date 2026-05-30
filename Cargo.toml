@@ -10,7 +10,7 @@ toml = "0.7.4"
 serde_derive = "1.0.160"
 serde = "1.0.164"
 tokio = { version = "1", features = ["full"] }
-rdkafka = { version = "0.32", features = ["cmake-build","ssl"] }
+rdkafka = { version = "0.32", features = ["ssl", "dynamic-linking"] }
 openssl = "0.10.54"
 log = "0.4"
 humantime = "2.1.0"
@@ -18,7 +18,7 @@ nanoid = "0.4.0"
 serde_json = "1.0.96"
 futures = "0.3.28"
 fern = { version = "0.6.2", features = ["colored"] }
-reqwest = "0.11.18"
+reqwest = { version = "0.12.4", features = ["cookies"] }
 bytes = "1.4.0"
 symphonia = { version = "0.5.3", features = ['pcm','mp3','wav','isomp4','aac','alac'] }
 url = "2.4.0"
@@ -29,15 +29,16 @@ anyhow = "1.0.71"
 async_fn_traits = "0.1.1"
 sentry = "0.31.3"
 dashmap = "5.4.0"
+nonmax = "0.5.5"
 
 [dependencies.songbird]
-git = "https://github.com/Hearth-Industries/songbird.git"
-branch="next"
+version = "0.6.0"
+default-features = false
+features = ["builtin-queue", "serenity", "native", "driver", "gateway", "tungstenite"]
 
 [dependencies.serenity]
-features = ["client", "standard_framework", "voice", "native_tls_backend","builder","cache","gateway","http","model","utils"]
-git = "https://github.com/serenity-rs/serenity.git"
-rev="4d54465e933756dc1cb5d68d9bcec8bb9aade0fc"
+version = "0.12"
+features = ["voice", "native_tls_backend", "builder", "cache", "gateway", "http", "model", "utils"]
 
 [dependencies.hearth-interconnect]
 git = "https://github.com/Hearth-Industries/hearth-interconnect.git"

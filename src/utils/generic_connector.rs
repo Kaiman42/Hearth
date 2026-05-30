@@ -95,7 +95,6 @@ pub async fn initialize_consume_generic(
         .set("enable.partition.eof", "false")
         .set("session.timeout.ms", "6000")
         .set("enable.auto.commit", "true")
-        .set("security.protocol", "ssl")
         .clone();
 
     kafka_config = configure_kafka_ssl(kafka_config, config);
