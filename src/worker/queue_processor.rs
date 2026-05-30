@@ -54,14 +54,17 @@ impl fmt::Display for JobID {
 #[derive(Clone, Debug)]
 pub struct ProcessorIPCData {
     pub action_type: ProcessorIncomingAction,
+    #[allow(dead_code)]
     pub songbird: Option<Arc<Songbird>>,
     pub dwc: Option<DirectWorkerCommunication>,
+    #[allow(dead_code)]
     pub error_report: Option<ErrorReport>,
     pub job_id: JobID,
 }
 
 pub struct ProcessorIPC {
     pub sender: Arc<Sender<ProcessorIPCData>>,
+    #[allow(dead_code)]
     pub receiver: Receiver<ProcessorIPCData>,
 }
 
