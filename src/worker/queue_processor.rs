@@ -251,27 +251,17 @@ pub async fn process_job(
                         dwc.job_id,
                         dwc.play_audio_url
                     );
-                    // Make sure we are not already playing something on this handler
-                    if !is_playing {
-                        track = error_report!(
-                            play_direct_link(&dwc, &mut manager, client.clone()).await,
-                            dwc.request_id.unwrap(),
-                            dwc.job_id.clone(),
-                            guild_id.clone(),
-                            config
-                        );
-                        is_playing = true;
-                    } else {
-                        report_error(
-                            ErrorReport {
-                                error: "Already playing!".to_string(),
-                                request_id: dwc.request_id.unwrap(),
-                                job_id: job_id.to_string(),
-                                guild_id: guild_id.clone(),
-                            },
-                            config,
-                        );
+                    if let Some(current_track) = &track {
+                        let _ = current_track.stop();
                     }
+                    track = error_report!(
+                        play_direct_link(&dwc, &mut manager, client.clone()).await,
+                        dwc.request_id.unwrap(),
+                        dwc.job_id.clone(),
+                        guild_id.clone(),
+                        config
+                    );
+                    is_playing = true;
                 }
                 ProcessorIncomingAction::Actions(DWCActionType::PlayFromYoutube) => {
                     let dwc = dwc.expect("This should never happen. Because this is a DWC type and is parsed previously.");
