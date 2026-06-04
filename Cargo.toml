@@ -20,7 +20,7 @@ futures = "0.3.28"
 fern = { version = "0.6.2", features = ["colored"] }
 reqwest = { version = "0.12.4", features = ["cookies"] }
 bytes = "1.4.0"
-symphonia = { version = "0.5.3", features = ['pcm','mp3','wav','isomp4','aac','alac'] }
+symphonia = { version = "0.5.5", features = ["all"] }
 url = "2.4.0"
 symphonia-core = "0.5.2"
 colored = "2.0.0"
