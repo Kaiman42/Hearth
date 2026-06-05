@@ -7,7 +7,7 @@ use crate::worker::actions::player::{play_direct_link, play_from_youtube};
 use crate::worker::actions::track_manager::{
     force_stop_loop, pause_playback, resume_playback, set_playback_volume,
 };
-use crate::worker::connector::{send_message, WORKER_PRODUCER};
+use crate::worker::connector::send_message;
 use crate::worker::constants::{
     DEFAULT_JOB_EXPIRATION_TIME, DEFAULT_JOB_EXPIRATION_TIME_NOT_PLAYING,
 };
@@ -68,14 +68,9 @@ pub struct ProcessorIPC {
     pub receiver: Receiver<ProcessorIPCData>,
 }
 
-async fn notify_expiration(guild_id: String, job_id: String, config: &Config) {
-    let mut px = WORKER_PRODUCER.get().unwrap().lock().await;
-    let p = px.as_mut();
-
+async fn notify_expiration(guild_id: String, job_id: String) {
     send_message(
         &Message::ExternalJobExpired(JobExpired { guild_id, job_id }),
-        &config.kafka.kafka_topic,
-        p.unwrap(),
     )
     .await;
 }
@@ -106,18 +101,12 @@ pub async fn process_job(
 
     // Send Queue Job Response
     {
-        // Scoped to release producer mutex
-        let mut px = WORKER_PRODUCER.get().unwrap().lock().await;
-        let p = px.as_mut();
-
         send_message(
             &Message::ExternalQueueJobResponse(ExternalQueueJobResponse {
                 job_id: job_id.to_string(),
                 worker_id: config.config.worker_id.as_ref().unwrap().clone(),
                 guild_id: job.guild_id,
             }),
-            config.kafka.kafka_topic.as_str(),
-            &mut *p.unwrap(),
         )
         .await;
     }
@@ -147,7 +136,7 @@ pub async fn process_job(
                             job_id.to_string(),
                             (time_change / 60) / 60
                         );
-                        notify_expiration(guild_id, job_id.to_string(), config).await;
+                        notify_expiration(guild_id, job_id.to_string()).await;
                         break;
                     }
 
@@ -164,7 +153,7 @@ pub async fn process_job(
                             job_id.to_string(),
                             (time_change / 60) / 60
                         );
-                        notify_expiration(guild_id, job_id.to_string(), config).await;
+                        notify_expiration(guild_id, job_id.to_string()).await;
                         break;
                     }
                 }

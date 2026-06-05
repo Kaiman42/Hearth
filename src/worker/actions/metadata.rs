@@ -1,16 +1,13 @@
 use crate::config::Config;
-use crate::worker::connector::{send_message, WORKER_PRODUCER};
+use crate::worker::connector::send_message;
 use anyhow::{Context, Result};
 use hearth_interconnect::errors::ErrorReport;
 use hearth_interconnect::messages::{Message, Metadata};
 use songbird::tracks::TrackHandle;
 use std::sync::OnceLock;
 use std::thread;
-
 use tokio::sync::Mutex;
 
-// This is a bit of a hack to pass data into the get metadata action
-// If anyone has any better ideas please let me know
 static CONFIG: OnceLock<Mutex<Option<Config>>> = OnceLock::new();
 static REQUEST_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static JOB_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
@@ -19,7 +16,7 @@ static GUILD_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 #[macro_export]
 macro_rules! report_metadata_error {
     ($e: ident) => {
-        use $crate::errors::report_error;
+        use $crate::worker::errors::report_error;
 
         let mut cx = CONFIG.get().unwrap().lock().await;
         let c = cx.as_mut();
@@ -44,9 +41,6 @@ macro_rules! report_metadata_error {
         );
     };
 }
-
-
-
 
 async fn get_codec_metadata(duration: Option<u64>, sample_rate: Option<u32>, position: u64) -> Result<Metadata> {
     let mut jx = JOB_ID.get().unwrap().lock().await;
@@ -76,21 +70,7 @@ async fn get_metadata_sub(duration: Option<u64>, sample_rate: Option<u32>, posit
     let r = get_codec_metadata(duration, sample_rate, position).await;
     match r {
         Ok(a) => {
-            let mut px = WORKER_PRODUCER.get().unwrap().lock().await;
-            let p = px.as_mut();
-
-            let mut cx = CONFIG.get().unwrap().lock().await;
-            let c = cx.as_mut();
-
-            let config = c.unwrap();
-            let topic = config.kafka.kafka_topic.clone();
-
-            send_message(
-                &Message::ExternalMetadataResult(a),
-                &topic,
-                &mut *p.unwrap(),
-            )
-            .await;
+            send_message(&Message::ExternalMetadataResult(a)).await;
         }
         Err(e) => {
             report_metadata_error!(e);
@@ -122,6 +102,6 @@ pub async fn get_metadata(
         });
         None
     });
-    
+
     Ok(())
 }

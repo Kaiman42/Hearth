@@ -5,7 +5,6 @@ use std::io::Write;
 use log::error;
 
 use nanoid::nanoid;
-// Loads config file
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(Deserialize, Clone, Serialize)]
@@ -13,30 +12,23 @@ pub struct InternalConfig {
     pub discord_bot_id: u64,
     pub discord_bot_token: String,
     pub worker_id: Option<String>,
-    pub job_expiration_time_seconds: Option<u64>, // In seconds
+    pub job_expiration_time_seconds: Option<u64>,
     pub job_expiration_time_seconds_not_playing: Option<u64>,
     pub sentry_url: Option<String>,
     pub log_level: Option<String>,
 }
 
 #[derive(Deserialize, Clone, Serialize)]
-pub struct KafkaConfig {
-    pub kafka_uri: String,
-    pub kafka_topic: String,
-    pub kafka_use_ssl: Option<bool>,
-    pub kafka_use_sasl: Option<bool>,
-    pub kafka_username: Option<String>,
-    pub kafka_password: Option<String>,
-    pub kafka_ssl_cert: Option<String>,
-    pub kafka_ssl_key: Option<String>,
-    pub kafka_ssl_ca: Option<String>,
+pub struct NatsConfig {
+    pub nats_server: String,
+    pub nats_token: Option<String>,
 }
 
 #[derive(Deserialize, Clone, Serialize)]
 pub struct Config {
     pub roles: Roles,
     pub config: InternalConfig,
-    pub kafka: KafkaConfig,
+    pub nats: NatsConfig,
 }
 
 #[derive(Deserialize, Clone, Serialize)]
@@ -46,7 +38,7 @@ pub struct Roles {
 }
 
 pub fn init_config() -> Config {
-    let filename = "config.toml"; //TODO: Change to environment variable
+    let filename = "config.toml";
 
     let contents = match fs::read_to_string(filename) {
         Ok(c) => c,
@@ -63,7 +55,6 @@ pub fn init_config() -> Config {
             panic!("Unable to load config data from `{}`", filename);
         }
     };
-    // Default value
 
     if config.config.worker_id.is_none() {
         config.config.worker_id = Some(nanoid!());
@@ -84,7 +75,6 @@ pub fn init_config() -> Config {
         }
     }
 
-    // Default to INFO if no Log Level is configured
     if config.config.log_level.is_none() {
         config.config.log_level = Some("INFO".to_string());
     }

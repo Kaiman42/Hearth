@@ -12,5 +12,5 @@ pub(crate) mod distributor;
 pub async fn initialize_scheduler(config: Config, ipc: &mut ProcessorIPC) {
     info!("Scheduler INIT");
     // Init server
-    initialize_api(&config, ipc, &nanoid!()).await;
+    initialize_api(&config, ipc).await;
 }
