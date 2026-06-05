@@ -1,81 +1,35 @@
-// Internal connector
-
 use std::sync::Arc;
 
 use hearth_interconnect::messages::Message;
 use log::{debug, error};
-use rdkafka::Message as KafkaMessage;
 
 use crate::config::Config;
-use crate::utils::constants::KAFKA_SEND_TIMEOUT;
+use crate::utils::constants::NATS_REQUEST_TIMEOUT;
 use crate::worker::queue_processor::{ProcessorIPC, ProcessorIPCData};
 use anyhow::Result;
 use async_fn_traits::{AsyncFn1, AsyncFn4};
-use rdkafka::consumer::{Consumer, StreamConsumer};
-use rdkafka::producer::{FutureProducer, FutureRecord};
-use rdkafka::ClientConfig;
+use nats::asynk::Connection;
 use songbird::Songbird;
 use tokio::sync::broadcast::Sender;
 
-fn configure_kafka_ssl(mut kafka_config: ClientConfig, config: &Config) -> ClientConfig {
-    if config.kafka.kafka_use_ssl.unwrap_or(false) {
-        kafka_config
-            .set("security.protocol", "ssl")
-            .set(
-                "ssl.ca.location",
-                config
-                    .kafka
-                    .kafka_ssl_ca
-                    .clone()
-                    .expect("Kafka CA Not Found"),
-            )
-            .set(
-                "ssl.certificate.location",
-                config
-                    .kafka
-                    .kafka_ssl_cert
-                    .clone()
-                    .expect("Kafka Cert Not Found"),
-            )
-            .set(
-                "ssl.key.location",
-                config
-                    .kafka
-                    .kafka_ssl_key
-                    .clone()
-                    .expect("Kafka Key Not Found"),
-            );
-    } else if config.kafka.kafka_use_sasl.unwrap_or(false) {
-        kafka_config
-            .set("security.protocol", "SASL_SSL")
-            .set("sasl.mechanisms", "PLAIN")
-            .set(
-                "sasl.username",
-                config.kafka.kafka_username.as_ref().unwrap(),
-            )
-            .set(
-                "sasl.password",
-                config.kafka.kafka_password.as_ref().unwrap(),
-            );
-    }
+pub async fn nats_connect(config: &Config) -> Connection {
+    let server = &config.nats.nats_server;
 
-    kafka_config
+    let nc = if let Some(token) = &config.nats.nats_token {
+        nats::asynk::connect_with_token(&server, token)
+            .await
+            .expect("Failed to connect to NATS")
+    } else {
+        nats::asynk::connect(&server)
+            .await
+            .expect("Failed to connect to NATS")
+    };
+
+    nc
 }
 
-pub fn initialize_producer(brokers: &String, config: &Config) -> FutureProducer {
-    let mut kafka_config = ClientConfig::new()
-        .set("bootstrap.servers", brokers)
-        .clone();
-
-    kafka_config = configure_kafka_ssl(kafka_config, config);
-
-    let producer: FutureProducer = kafka_config.create().expect("Failed to create Producer");
-
-    producer
-}
-
-pub async fn initialize_consume_generic(
-    brokers: &String,
+pub async fn nats_listen(
+    nc: &Connection,
     config: &Config,
     callback: impl AsyncFn4<
         Message,
@@ -87,64 +41,41 @@ pub async fn initialize_consume_generic(
     ipc: &mut ProcessorIPC,
     initialized_callback: impl AsyncFn1<Config, Output = ()>,
     songbird: Option<Arc<Songbird>>,
-    group_id: &String,
 ) {
-    let mut kafka_config = ClientConfig::new()
-        .set("group.id", group_id)
-        .set("bootstrap.servers", brokers)
-        .set("enable.partition.eof", "false")
-        .set("session.timeout.ms", "6000")
-        .set("enable.auto.commit", "true")
-        .clone();
+    let subject = "communication";
+    let sub = nc.subscribe(subject).await.expect("Failed to subscribe");
 
-    kafka_config = configure_kafka_ssl(kafka_config, config);
-
-    let consumer: StreamConsumer = kafka_config.create().expect("Failed to create Consumer");
-
-    consumer
-        .subscribe(&[&config.kafka.kafka_topic])
-        .expect("Can't subscribe to specified topic");
-
-    initialized_callback(config.clone()).await; // Unfortunate clone because of Async trait
+    initialized_callback(config.clone()).await;
 
     loop {
-        let mss = consumer.recv().await;
-        match mss {
-            Ok(m) => {
-                let payload = m.payload();
+        match sub.next().await {
+            Some(msg) => {
+                let payload = msg.data;
+                let parsed_message: Result<Message, serde_json::Error> =
+                    serde_json::from_slice(&payload);
 
-                match payload {
-                    Some(payload) => {
-                        let parsed_message: Result<Message, serde_json::Error> =
-                            serde_json::from_slice(payload);
-
-                        match parsed_message {
-                            Ok(m) => {
-                                let _parse = callback(
-                                    m,
-                                    config.clone(),
-                                    ipc.sender.clone(),
-                                    songbird.clone(),
-                                )
-                                .await; // More Unfortunate clones because of Async trait. At least most of these implement Arc so it's not the worst thing in the world
-                            }
-                            Err(e) => error!("{}", e),
-                        }
+                match parsed_message {
+                    Ok(m) => {
+                        let _ = callback(
+                            m,
+                            config.clone(),
+                            ipc.sender.clone(),
+                            songbird.clone(),
+                        )
+                        .await;
                     }
-                    None => {
-                        error!("Received No Payload!");
-                    }
+                    Err(e) => error!("{}", e),
                 }
             }
-            Err(e) => error!("{}", e),
+            None => break,
         }
     }
 }
 
-pub async fn send_message_generic(message: &Message, topic: &str, producer: &mut FutureProducer) {
-    // Send message to worker
+pub async fn nats_publish(nc: &Connection, message: &Message) {
     let data = serde_json::to_string(message).unwrap();
-    let record: FutureRecord<String, String> = FutureRecord::to(topic).payload(&data);
-    producer.send(record, KAFKA_SEND_TIMEOUT).await.unwrap();
+    nc.publish("communication", data.as_bytes())
+        .await
+        .unwrap();
     debug!("Sent MSG");
 }
